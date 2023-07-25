@@ -116,31 +116,38 @@ class IndirectRevieweeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class AddRoomMembersSerializer(serializers.Serializer):
-    moderators = RoomModeratorSerializer(many=True)
-    reviewers = RoomReviewerSerializer(many=True)
-    direct_reviewees = DirectRevieweeSerializer(many=True)
-    indirect_reviewees = IndirectRevieweeSerializer(many=True)
+class AddModeratorSerializer(serializers.ModelSerializer):
+    moderator = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
     room = serializers.PrimaryKeyRelatedField(queryset=ModerationRoom.objects.all())
-    added_by = UserBasicInfoSerializer()
+    added_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
 
-    def create(self, validated_data):
-        # Custom create logic here if needed
-        pass
+    class Meta:
+        model = RoomModerator
+        fields = '__all__'
+    
+class AddReviewerSerializer(serializers.ModelSerializer):
+    reviewer = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    room = serializers.PrimaryKeyRelatedField(queryset=ModerationRoom.objects.all())
+    added_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
 
-    def update(self, instance, validated_data):
-        # Custom update logic here if needed
-        pass
+    class Meta:
+        model = RoomReviewer
+        fields = '__all__'
 
+class AddDirectRevieweeSerializer(serializers.ModelSerializer):
+    direct_reviewee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    room = serializers.PrimaryKeyRelatedField(queryset=ModerationRoom.objects.all())
+    added_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
 
-# class AddRoomMembersSerializer(serializers.ModelSerializer):
-#     moderator = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
-#     reviewer = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
-#     direct_reviewees = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
-#     indirect_reviewees = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
-#     room = serializers.PrimaryKeyRelatedField(queryset=ModerationRoom.objects.all())
-#     added_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    class Meta:
+        model = DirectReviewee
+        fields = '__all__'
 
-#     class Meta:
-#         model = RoomModerator
-#         fields = '__all__'
+class AddIndirectRevieweeSerializer(serializers.ModelSerializer):
+    indirect_reviewee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    room = serializers.PrimaryKeyRelatedField(queryset=ModerationRoom.objects.all())
+    added_by = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+
+    class Meta:
+        model = IndirectReviewee
+        fields = '__all__'
