@@ -1,11 +1,6 @@
-from django.db import transaction
-from django.utils.decorators import method_decorator
-from django.core.exceptions import ValidationError
-from rest_framework.viewsets import ModelViewSet
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.decorators import action
 
 from .models import (
     User, ModerationRoom, RoomModerator, RoomReviewer, DirectReviewee)
@@ -13,31 +8,16 @@ from .models import (
 from .rooms_serializers import (
     UserBasicInfoSerializer,
     ModerationRoomSerializer, CreateModerationRoomSerializer, UpdateModerationRoomSerializer, 
-    RoomModeratorSerializer, AddRoomMembersSerializer)
+    AddRoomMembersSerializer)
 
-from .utils import (
-    get_room, get_room_by_POST, get_moderators_by_POST
-)
 
 class ModerationRoomView(APIView):
-    # @method_decorator([get_room])
-    # def get(self, request, room: ModerationRoom):
-    #     if not room:
-    #         return Response({
-    #             'error: Please provide room id'
-    #         }, status=status.HTTP_400_BAD_REQUEST)
-    
-    #     objs = ModerationRoom.objects.filter(room=id, is_active=True)
-    #     objs_srlz = ModerationRoomSerializer(objs, many=True)
-    #     return Response(objs_srlz.data)
     def get(self, request):
         queryset = ModerationRoom.objects.all()
         serializer = ModerationRoomSerializer(queryset, many=True)
         return Response(serializer.data)
     
-    
-    # @method_decorator([get_room_by_POST, get_moderators_by_POST])
-    def post(self, request): # moderators: RoomModerator, room: ModerationRoom):
+    def post(self, request):
         room_srlz = CreateModerationRoomSerializer(data=request.data)
         if room_srlz.is_valid():
             room_srlz.save()
@@ -46,71 +26,108 @@ class ModerationRoomView(APIView):
         
         room = room_srlz.instance
 
+        def add_users(users, role):
+            data = []
+            for user_id in users:
+                try:
+                    user = User.objects.get(pk=user_id)
+                    added_by = User.objects.get(pk=request.data.get('added_by'))
+                    data.append({
+                        role: UserBasicInfoSerializer(user).data,
+                        'room': room.id,
+                        'added_by': UserBasicInfoSerializer(added_by).data
+                    })
+                except User.DoesNotExist:
+                    return Response(f"User with ID {user_id} does not exist.", status=status.HTTP_400_BAD_REQUEST)
+            return data
+
+        # Adding moderators
         moderators = request.data.get('moderators', [])
-        data = []
+        moderator_data = add_users(moderators, 'moderators')
 
-        for moderator_id in moderators:
-            try:
-                moderator = User.objects.get(pk=moderator_id)
-                data.append({
-                    'moderator': moderator_id,
-                    'room': room.id,
-                    'added_by': request.data.get('added_by') 
-                })
-            except User.DoesNotExist:
-                return Response(f"User with ID {moderator_id} does not exist")
+        # Adding reviewers
+        reviewers = request.data.get('reviewers', [])
+        reviewer_data = add_users(reviewers, 'reviewers')
 
-        mod_srlz = AddRoomMembersSerializer(
-            data=data, many=True, context={
-                'reqeust':request
-            })
+        # Adding direct reviewees
+        direct_reviewees = request.data.get('direct_reviewees', [])
+        direct_reviewee_data = add_users(direct_reviewees, 'direct_reviewees')
+
+        # Adding indirect reviewees
+        indirect_reviewees = request.data.get('indirect_reviewees', [])
+        indirect_reviewee_data = add_users(indirect_reviewees, 'indirect_reviewees')
+
+        all_users_data = moderator_data + reviewer_data + direct_reviewee_data + indirect_reviewee_data
         
-        if mod_srlz.is_valid():
-            mod_srlz.save()
-    
-        else:
+        mod_srlz = AddRoomMembersSerializer(
+            data=all_users_data, many=True, context={
+                'request': request
+            }
+        )
+        print(mod_srlz.initial_data)
+        if not mod_srlz.is_valid():
+            # if serializer is not valid, delete the room and cancel this operation
             room.delete()
+            print('adjk')
             return Response(mod_srlz.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        # Fetch the updated room object with the new moderators
+        mod_srlz.save()
+
+         # Fetch the updated room object with the new members
         updated_room = ModerationRoom.objects.get(pk=room.id)
+        print("updated room", updated_room)
+        # Serialize the users associated with the room
+        all_user_ids = set(moderators + reviewers + direct_reviewees + indirect_reviewees)
+        users = User.objects.filter(id__in=all_user_ids)
+        user_srlz = UserBasicInfoSerializer(users, many=True)
 
-        # Serialize the moderators associated with the room
-        moderators = User.objects.filter(id__in=moderators)  # Assuming 'moderators' is a list of moderator IDs
-        moderator_srlz = UserBasicInfoSerializer(moderators, many=True)
-
-        # Serialize the updated room object along with the moderator information
+        # Serialize the updated room object along with the user information
         updated_room_srlz = ModerationRoomSerializer(updated_room)
 
+        # Include the serialized users in the response
         response_data = updated_room_srlz.data
-        response_data['moderators'] = moderator_srlz.data
+        response_data['users'] = user_srlz.data
+
         return Response({'room': response_data})
+
+        # for moderator_id in moderators:
+        #     try:
+        #         moderator = User.objects.get(pk=moderator_id)
+        #         data.append({
+        #             'moderator': moderator_id,
+        #             'room': room.id,
+        #             'added_by': request.data.get('added_by') 
+        #         })
+        #     except User.DoesNotExist:
+        #         return Response(f"User with ID {moderator_id} does not exist")
+
+        # mod_srlz = AddRoomMembersSerializer(
+        #     data=data, many=True, context={
+        #         'reqeust':request
+        #     })
+        
+        # if mod_srlz.is_valid():
+        #     mod_srlz.save()
     
+        # else:
+        #     room.delete()
+        #     return Response(mod_srlz.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # # Fetch the updated room object with the new moderators
+        # updated_room = ModerationRoom.objects.get(pk=room.id)
+
+        # # Serialize the moderators associated with the room
+        # moderators = User.objects.filter(id__in=moderators)  # Assuming 'moderators' is a list of moderator IDs
+        # moderator_srlz = UserBasicInfoSerializer(moderators, many=True)
+
+        # # Serialize the updated room object along with the moderator information
+        # updated_room_srlz = ModerationRoomSerializer(updated_room)
+
+        # response_data = updated_room_srlz.data
+        # response_data['moderators'] = moderator_srlz.data
+        # return Response({'room': response_data})
 
 
-        # Make sure room is present
-        # print('pk:',pk)
-
-        # room = ModerationRoom.object.get(id=pk)
-        # if not room:
-        #     return Response({
-        #         'error': 'Room not found'
-        #     }}
-
-        # try:
-        #     with transaction.atomic():
-        #         moderator_srlz = AddRoomMembersSerializer(data=request.data)
-        #         if moderator_srlz.is_valid():
-        #             moderator_srlz.save()
-        #             return Response(moderator_srlz.data, status=status.HTTP_201_CREATED)
-                
-        # except ValidationError:
-        #     return Response({'Validation Error': 'Failed to add room members.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # return Response({'message': 'Room members added successfully.'}, status=status.HTTP_200_OK)
-
-
-        # # return Response({'message': 'Room members added successfully.'}, status=status.HTTP_200_OK)
 
 
 

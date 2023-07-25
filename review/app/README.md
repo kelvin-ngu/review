@@ -16,7 +16,7 @@ To add moderators + reviewers + reviewees to a specific room.
         ],
     "added_by": 
         id                  #user_id
-}
+    }
     
 
 * Return:
